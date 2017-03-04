@@ -136,18 +136,64 @@ stackLandsat <- function(path, prefix){
 }
 
 # Plot a Landsat RGB (requires stackLandsat function)
-rgbLandsat <- function(path = "", prefix = "", stackname = "", is.stacked = FALSE){
+rgbLandsat <- function(path = "", prefix = "", stackname = "", is.stacked = FALSE, r, b){
   if(nchar(path) > 0){
     stackname <- stackLandsat(path, prefix)
   }
-  # get just the RGB bands 6,5,4 (that range because of the cfmasks in front)
-  rgbstack <- stack(stackname[[6:4]])
+  
+  # Identify the red and blue bands
+  rband <- grep(paste0("band", as.character(r)), names(stackname))
+  bband <- grep(paste0("band", as.character(b)), names(stackname))
+  # get just the RGB bands 
+  rgbstack <- stack(stackname[[rband:bband]]) # assumes green is in the middle
   f.name <- names(rgbstack)[1]
   plotRGB(rgbstack, scale = 2^16, axes = TRUE, main = substr(f.name, 1, nchar(f.name)-9), stretch = "lin")
   
 }
 
+# Crop and mask a tif (can take a variable or a file name)
+clipTIF <- function(path = "", tifname, bandnum = "", clipboundary){
+  # Run these lines if a tif file has been given, otherwise skip
+  if(nchar(path) > 0){
+    ## Read in the tif
+    tifname <- raster(paste0(path, tifname), band = bandnum)
+  }
+  
+  # Crop them all down to the boundary extent
+  ras <- crop(tifname, extent(clipboundary))
+  
+  # Clip to the boundary
+  final.ras <- mask(ras, clipboundary)
+  
+  return(final.ras)
+}
 
+# Download a google image based on the boundary of a raster's pixel
+getGoogleimage <- function(rastername, ras.pixel.num, destfilename, zoomlevel, typeofmap){
+  
+  # Extract that pixel
+  pxl <- rasterFromCells(rastername, ras.pixel.num)
+  # plot(pxl)
+  
+  ### Get the corner coordinates
+  # List the 2 opposite corners
+  c1 <- cbind(xmin(pxl), ymin(pxl))
+  c2 <- cbind(xmax(pxl), ymax(pxl))
+  cc <- rbind(c1, c2)
+  # Find projection and make spatial points
+  prj <- crs(pxl)
+  utmcoor2<-SpatialPoints(cc, proj4string=prj)
+  
+  # Convert to lat long
+  latlong <- spTransform(utmcoor2, CRS("+proj=longlat"))
+  # Make extent objects for plugging into google map function
+  ext2 <- extent(latlong)
+  x.range <- c(ext2@xmin, ext2@xmax)
+  y.range <- c(ext2@ymin, ext2@ymax)
+  
+  # DOWNLOAD THE IMAGE
+  GetMap.bbox(x.range, y.range, destfile = destfilename, maptype = typeofmap, zoom = zoomlevel)
+}
 
 # image_prefix <- "LC81680602014034LGN00"
 # image_folder <- "C:/Users/nagelki-4/Desktop/nagelki4/Grad School/Projects/EleTree Analysis/SMA/Landsat/Mpala/LC81680602014034-SC20160914165712/Original"
