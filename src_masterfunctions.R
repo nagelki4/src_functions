@@ -50,7 +50,7 @@ png.read.plot <- function(png.name){
 
 # Calc MSAVI2 from a folder and Landsat file specication
 MSAVI2_Landsat_calc <- function(path, prefix){ # should allow a shapefile in this to clip to first
-    
+  
   # Identify mask and band file paths (we just want 4 and 5)
   landsat.bands <- list.files(path, pattern = prefix, full.names = TRUE)
   band4_path <- grep(pattern = "band4", landsat.bands, value = TRUE)
@@ -235,6 +235,7 @@ TGSWcover <- function(redband, greenband, blueband, save.class.pixel = FALSE, cl
     water <- sum.im.pre < 1.3 & grvd.pre < .03
     # plot(water, main = "Water")
     water.frac <- length(water[water == 1])/length(water[]) # calculate the fraction of water
+    water.frac.thresh <- 0.05 # When water occupies what fraction of the scene will it be included in the classification? This was done because trees are sometimes classified as water, so only class water when it's fairly certain it's in the image. 
     if(water.frac > water.frac.thresh){
       water.mask <- water
       water.mask[water.mask == 1] <- 50
@@ -367,7 +368,8 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
   ##########  First, make the table that values will be plugged into ###############################
   mx <- matrix(0, nrow = samplesize, ncol = 12)
   c.names <- c("Count", "pxl.num", "p.tree", "p.grass", "p.soil", "p.water", 
-               "maj.truth", "SMA.tree", "SMA.grass", "SMA.soil", "SMA.water", "maj.SMA")
+               "maj.truth", "SMA.tree", "SMA.grass", "SMA.soil", "SMA.water", 
+               "maj.SMA")
   colnames(mx) <- c.names
   master.df <- as.data.frame(mx)
   
@@ -513,9 +515,9 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
       count.nine.pix <- count.nine.pix + 1
     }
     # Plug them in the averages for the 9 pixels into the df after all 9 are done
-    master.df$nine.tree[t] <- mean(nine.cell.vector.tree)
-    master.df$nine.grass[t] <- mean(nine.cell.vector.grass)
-    master.df$nine.soil[t] <- mean(nine.cell.vector.soil)
+    master.df$nine.tree[t] <- mean(as.numeric(nine.cell.vector.tree))
+    master.df$nine.grass[t] <- mean(as.numeric(nine.cell.vector.grass))
+    master.df$nine.soil[t] <- mean(as.numeric(nine.cell.vector.soil))
   }
   
   # Save the 9-pixel df to csv
@@ -524,8 +526,6 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
   
   return(master.df)
 }
-
-
 
 
 addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary,
@@ -565,8 +565,8 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   }
   
   plot(TREE, axes=F,box = F, main = "Trees SMA")
-plot(GRASS, axes=F,box = F, main = "Grass SMA")
-plot(SOIL, axes=F,box = F, main = "Soil SMA")
+  plot(GRASS, axes=F,box = F, main = "Grass SMA")
+  plot(SOIL, axes=F,box = F, main = "Soil SMA")
   
   TREE <- mask(TREE, groundtruthboundary) # if you try to do this in the clipTIF, it will result in a smaller raster and indexing won't work
   GRASS <- mask(GRASS, groundtruthboundary)
@@ -611,19 +611,104 @@ plot(SOIL, axes=F,box = F, main = "Soil SMA")
   
 }
 
-addData <- function(variable, df, colname, samplesize, cellnumbers){
-  for(t in 1:samplesize){
+
+addData <- function(tiffname, df, colname){
+  # get some stats
+  samplesize <- nrow(df)
+  cellnumbers <- df$pxl.num
   
+  # get the columb number from the df
+  if(length(which(colnames(df) == colname)) < 1){ # if this is true, there is no column for the variable
+    for(t in 1:samplesize){
+      df$newcol[t] <- tiffname[cellnumbers[t]]
+    }
+    # Rename the new (last) column
+    names(df)[ncol(df)] <- colname
+  } else { # This assumes the column does exist then
+    colnum <- which(colnames(df) == colname)
+    
+    for(t in 1:samplesize){
+      df[t, colnum] <- tiffname[cellnumbers[t]]
+    }
+  }
   
-  
-  
-  
-  
-  
+  return(df)
   
 }
 
+
+confusionMatrix <- function(df, save.confusion.matrix = FALSE, save.matrix.as = "default_cnfusn_mtrx.csv", classify.water = FALSE){
+  
+  # get some stats
+  sample.size <- nrow(df)
+  
+  if(classify.water){
+    c.name <- c("Trees", "Grass", "Soil", "Water", "Total", "Percent Correct")
+  }else{c.name <- c("Trees", "Grass", "Soil", "Total", "Percent Correct")}
+  
+  # make the table
+  c.mtx <- matrix(0, nrow = length(c.name), ncol = length(c.name)) 
+  c.mtx.df <- as.data.frame(c.mtx)
+  colnames(c.mtx.df) <- c.name
+  rownames(c.mtx.df) <- c.name
+  
+  # n <- 1
+  for(n in 1:sample.size){
+    truth <- df$maj.truth[n]
+    pred <- df$maj.SMA[n]
+    
+    # Assign the coordinates for plugging into table
+    if(truth == "Trees"){
+      truth.cor <- 1
+    } else if (truth == "Grass"){
+      truth.cor <- 2
+    } else if (truth == "Soil"){
+      truth.cor <- 3
+    }
+    
+    if(pred == "Trees"){
+      pred.cor <- 1
+    } else if (pred == "Grass"){
+      pred.cor <- 2
+    } else if (pred == "Soil"){
+      pred.cor <- 3
+    }
+    
+    # Now go the position in the table and add 1
+    c.mtx.df[truth.cor, pred.cor] <- c.mtx.df[truth.cor, pred.cor] + 1
+  }
+  
+  # Now sum the columns and calc the percent correct
+  # First define how many columns/rows have numbers to add
+  summing.values <- ncol(c.mtx.df) - 2
+  tot.rowcol <- ncol(c.mtx.df) - 1
+  per.rowcol <- ncol(c.mtx.df)
+  tot.correct <- 0 # set up total correct variable to be adding values to from the diagonal 
+  
+  # Now calculate them
+  for(i in 1:summing.values){
+    c.mtx.df[i, tot.rowcol] <- sum(c.mtx.df[i, 1:summing.values]) # does the Total column
+    c.mtx.df[i, per.rowcol] <- c.mtx.df[i, i] / c.mtx.df[i, tot.rowcol] # does the percent column
+    c.mtx.df[tot.rowcol, i] <- sum(c.mtx.df[1:summing.values, i]) # does the Total row
+    c.mtx.df[per.rowcol, i] <- c.mtx.df[i, i] / c.mtx.df[tot.rowcol, i] # does the percent column
+    
+    tot.correct <- tot.correct + c.mtx.df[i, i]
+    # Fill in the total/total cell and the overall percent correct 
+    if(i == summing.values){
+      # Fill in the Total/Total combo cell
+      c.mtx.df[tot.rowcol, tot.rowcol] <- sum(c.mtx.df[1:summing.values, tot.rowcol])
+      # Last, fill in the total percent correct (lower right corner cell)
+      c.mtx.df[per.rowcol, per.rowcol] <- tot.correct / c.mtx.df[tot.rowcol, tot.rowcol]
+    }
+  }
+  
+  if(save.confusion.matrix){
+    write.csv(c.mtx.df, save.matrix.as)
+  }
+  
+  return(c.mtx.df)
 }
+
 
 
 
