@@ -527,7 +527,7 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
   return(master.df)
 }
 
-
+# Add the SMA data to the master.df, and return that with the park level tree, grass, soil layers 
 addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary,
                    groundtruthboundary, df, isHDR = FALSE){
   
@@ -547,50 +547,57 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   
   # Rescale values if HDR file
   if(isHDR){
-    tr.max <- max(TREE[!is.na(TREE)])
+    
+    ## This is done to replicate how ENVI does it, but not saying it's the best way
+    #### If the values are between 0-1, like they should be, this will do nothing to the HDR except scale to 255
+    ### When they aren't 0-1, it creates scales the RGB255 between the min and max
+    ### See MASTER_Classifying Tree Cover.doc's HDR->Tiff section for more explanation 
+    
     tr.min <- min(TREE[!is.na(TREE)])
-    TREE[TREE > 0] <- TREE[TREE > 0]/tr.max*255
-    TREE[TREE < 0] <- TREE[TREE < 0]/tr.min*255
-    # TREE <- (TREE + abs(tr.min))/(tr.max - tr.min)*255
+    tr.max <- max(TREE[!is.na(TREE)])
+    TREE.shift <- TREE - tr.min # brings the min to zero
+    new.max <- max(TREE.shift[!is.na(TREE.shift)])
+    TREE <- (TREE.shift/new.max)*255
+    # TREE <- (TREE - tr.min)/(tr.max - tr.min)*255 # This is the same as above, but simpler
+    
     tr.max <- max(GRASS[!is.na(GRASS)])
     tr.min <- min(GRASS[!is.na(GRASS)])
-    GRASS[GRASS > 0] <- GRASS[GRASS > 0]/tr.max*255
-    GRASS[GRASS < 0] <- GRASS[GRASS < 0]/tr.min*255
-    # GRASS <- (GRASS + abs(tr.min))/(tr.max - tr.min)*255# Might want to do the same with negatives if this ends up overestimating tree cover
+    GRASS <- (GRASS - tr.min)/(tr.max - tr.min)*255
+    
     tr.max <- max(SOIL[!is.na(SOIL)])
     tr.min <- min(SOIL[!is.na(SOIL)])
-    SOIL[SOIL > 0] <- SOIL[SOIL > 0]/tr.max*255
-    SOIL[SOIL < 0] <- SOIL[SOIL < 0]/tr.min*255
-    # SOIL <- (SOIL + abs(tr.min))/(tr.max - tr.min)*255
+    SOIL <- (SOIL - tr.min)/(tr.max - tr.min)*255
+    
+    # Old code scaled values below 0 to 255 and those above to 255, which makes no sense!
   }
   
   plot(TREE, axes=F,box = F, main = "Trees SMA")
   plot(GRASS, axes=F,box = F, main = "Grass SMA")
   plot(SOIL, axes=F,box = F, main = "Soil SMA")
   
-  TREE <- mask(TREE, groundtruthboundary) # if you try to do this in the clipTIF, it will result in a smaller raster and indexing won't work
-  GRASS <- mask(GRASS, groundtruthboundary)
-  SOIL <- mask(SOIL, groundtruthboundary)
+  TREE.c <- mask(TREE, groundtruthboundary) # if you try to do this in the clipTIF, it will result in a smaller raster and indexing won't work
+  GRASS.c <- mask(GRASS, groundtruthboundary)
+  SOIL.c <- mask(SOIL, groundtruthboundary)
   
   for(t in 1:samplesize){
     
     # Some cells are now NA because the classification excluded cover chances in some places, so switch to 0 
-    if(is.na(TREE[cellnumbers[t]])){
-      TREE[cellnumbers[t]] <- 0
+    if(is.na(TREE.c[cellnumbers[t]])){
+      TREE.c[cellnumbers[t]] <- 0
     }
     
-    if(is.na(GRASS[cellnumbers[t]])){
-      GRASS[cellnumbers[t]] <- 0
+    if(is.na(GRASS.c[cellnumbers[t]])){
+      GRASS.c[cellnumbers[t]] <- 0
     }
     
-    if(is.na(SOIL[cellnumbers[t]])){
-      SOIL[cellnumbers[t]] <- 0
+    if(is.na(SOIL.c[cellnumbers[t]])){
+      SOIL.c[cellnumbers[t]] <- 0
     }
     
     # Get percent cover
-    sma.tree <- TREE[cellnumbers[t]]/255  
-    sma.grass <- GRASS[cellnumbers[t]]/255
-    sma.soil <- SOIL[cellnumbers[t]]/255
+    sma.tree <- TREE.c[cellnumbers[t]]/255  
+    sma.grass <- GRASS.c[cellnumbers[t]]/255
+    sma.soil <- SOIL.c[cellnumbers[t]]/255
     
     # Define major cover for SMA
     if(sma.tree > sma.grass & sma.tree > sma.soil){
@@ -607,7 +614,8 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
     # Add the data to master.df
   }
   
-  return(df)
+  r.list <- list(df, TREE, GRASS, SOIL)
+  return(r.list)
   
 }
 
@@ -708,6 +716,182 @@ confusionMatrix <- function(df, save.confusion.matrix = FALSE, save.matrix.as = 
   
   return(c.mtx.df)
 }
+
+
+# Convert a variable name to text 
+var2text <- function(variable){
+  v.text <- deparse(substitute(variable))
+  return(v.text)
+}
+
+
+# Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
+plot1to1 <- function(x, y, xlab = "", ylab = "", main = ""){
+  # Calculate Stats
+  ##   RMSE
+  rmse <- sqrt(mean((y - x)^2 , na.rm = TRUE))
+  correl <- cor(x, y)
+  covar <- cov(x, y)
+  
+  if(nchar(xlab) < 1) xlab <- var2text(x)
+  if(nchar(ylab) < 1) ylab <- var2text(y)
+  if(nchar(main) < 1) main <- paste(xlab, "vs.", ylab)
+  
+  # Plot
+  plot(x*100, y*100, 
+       main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2)), 
+       xlab = xlab, ylab = ylab, xlim = c(0,100), ylim = c(0,100))
+  abline(0,1) # Add the 1:1 line
+  
+}
+
+# Create's a transtion matrix from 2 stacks (one old and one new). Stack must be stack(Treecover, Grasscover, Soilcover) in that order
+create.trans.mtx <- function(recent.TGS.cover.stack, yearofrecent = "", old.cover.TGS.cover.stack, yearofold = "", 
+                             save.transition.matrix = FALSE, tran.mtx.name = "default.transition.matrix.csv"){
+  
+  # Change the names to be shorter
+  r.stack <- recent.TGS.cover.stack
+  o.stack <- old.cover.TGS.cover.stack
+  
+  # make the table
+  t.mtx <- matrix(0, nrow = 3, ncol = 3)
+  tran.mx <- as.data.frame(t.mtx)
+  c.name <- c("Trees", "Grass", "Soil")
+  colnames(tran.mx) <- c.name
+  rownames(tran.mx) <- c.name
+  
+  
+  
+  # Plot RGB (Tree = Re)
+  plotRGB(r.stack, scale = 255, main = paste0(yearofrecent, " \n", "Trees = Red, Grass = Green, Soil = Blue"))
+  plotRGB(o.stack, scale = 255, main = paste0(yearofold, " \n", "Trees = Red, Grass = Green, Soil = Blue"))
+  
+  # Go to each cell in the two years and figure out dominant class
+  # To start, set NA's to 0 so comparisons can be ran
+  t87 <- o.stack[[1]]
+  g87 <- o.stack[[2]]
+  s87 <- o.stack[[3]]
+  t14 <- r.stack[[1]]
+  g14 <- r.stack[[2]]
+  s14 <- r.stack[[3]]
+  t87[is.na(t87)] <- 0
+  g87[is.na(g87)] <- 0
+  s87[is.na(s87)] <- 0
+  t14[is.na(t14)] <- 0
+  g14[is.na(g14)] <- 0
+  s14[is.na(s14)] <- 0
+  # n <- tran.sample[1]
+  
+  # Doing all the cells 
+  for(n in 1:length(t87)){
+    
+    # Compute percentages and what the majority cover is
+    tree_87 <- t87[n]
+    grass_87 <- g87[n]
+    soil_87 <- s87[n]
+    tree_14 <- t14[n]
+    grass_14 <- g14[n]
+    soil_14 <- s14[n]
+    
+    # Define major cover types and skip to next loop if none is greater than the others (means they were all NA originally)
+    # Define majority cover for 1987 SMA
+    if(tree_87 > grass_87 & tree_87 > soil_87){
+      cov.87 <- "Trees"
+    } else if(grass_87 > tree_87 & grass_87 > soil_87){
+      cov.87 <- "Grass"
+    } else if(soil_87 > tree_87 & soil_87 > grass_87){
+      cov.87 <- "Soil"
+    } else{next}
+    
+    # Define major cover for 2014 SMA
+    if(tree_14 > grass_14 & tree_14 > soil_14){
+      cov.14 <- "Trees"
+    } else if(grass_14 > tree_14 & grass_14 > soil_14){
+      cov.14 <- "Grass"
+    } else if(soil_14 > tree_14 & soil_14 > grass_14){
+      cov.14 <- "Soil"
+    } else{next}
+    
+    
+    # Assign the table coordinates (row/column) for plugging into table
+    if(cov.87 == "Trees"){
+      coord.87 <- 1
+    } else if (cov.87 == "Grass"){
+      coord.87 <- 2
+    } else if (cov.87 == "Soil"){
+      coord.87 <- 3
+    }
+    
+    if(cov.14 == "Trees"){
+      coord.14 <- 1
+    } else if (cov.14 == "Grass"){
+      coord.14 <- 2
+    } else if (cov.14 == "Soil"){
+      coord.14 <- 3
+    }
+    
+    # Now go to the position in the table and add 1
+    tran.mx[coord.14, coord.87] <- tran.mx[coord.14, coord.87] + 1
+  }
+  
+  # CREATE CHANGE MAPS
+  # Subtract the three maps to get the change
+  
+  # Tree cover change
+  tree.delta <- t14/255 - t87/255
+  tree.delta[tree.delta[] == 0] <- NA
+  plot(tree.delta, main = "Tree cover change")
+  
+  # Grass cover change
+  grass.delta <- g14/255 - g87/255
+  grass.delta[grass.delta[] == 0] <- NA
+  plot(grass.delta, main = "Grass cover change")
+  
+  # Soil cover change
+  soil.delta <- s14/255 - s87/255
+  soil.delta[soil.delta[] == 0] <- NA
+  plot(soil.delta, main = "Soil cover change")
+  
+  
+  
+  if(save.transition.matrix){
+    write.csv(tran.mx, tran.mtx.name)
+  }
+  
+  return(tran.mx)
+  
+  
+  
+  # 
+  # # Create the entire list of cell numbers that have values
+  # # Get the cell numbers
+  # all.cell.val <- na.omit(mpala[])
+  # 
+  # all.cell.numbers <- c()
+  # for(i in all.cell.val){
+  #   sing.cell.new <- Which(mpala == i, cells= TRUE)
+  #   all.cell.numbers <- c(all.cell.numbers, sing.cell.new)
+  # }
+  
+  
+  
+  # # Check whether there are NA's within Mpala at all cover levels by summing them and if anything is still 0, then it was NA at all
+  # t87 <- TREE.87
+  # g87 <- GRASS.87
+  # s87 <- SOIL.87
+  # t87[is.na(t87)] <- 0
+  # g87[is.na(g87)] <- 0
+  # s87[is.na(s87)] <- 0
+  # # Checked out. Would want to do this for the 14 year too, but thought not necessary
+  # sum87 <- t87 + g87 + s87
+  # plot(sum87)
+  
+  
+}
+
+
+
+
 
 
 
