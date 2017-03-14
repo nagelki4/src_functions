@@ -529,7 +529,7 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
 
 # Add the SMA data to the master.df, and return that with the park level tree, grass, soil layers 
 addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary,
-                   groundtruthboundary, df, isHDR = FALSE){
+                   groundtruthboundary, df, isHDR = FALSE, is.unconstrained = FALSE){
   
   # get some stats
   samplesize <- nrow(df)
@@ -545,30 +545,65 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   # GRASS.87 <- clipTIF(path = SMA.folder, tifname = SMA.87, bandnum = gr.bandnum.87, clipboundary = mpala.boundary.simple)
   # SOIL.87 <- clipTIF(path = SMA.folder, tifname = SMA.87, bandnum = so.bandnum.87, clipboundary = mpala.boundary.simple)
   
+  # ENVI put zeros in for values that should be NA (They are values beyond the MESMA constraints)
+  # A pure zero value is, I think, virtually impossible, so this shouldn't be overwriting any valid values
+  TREE[TREE == 0] <- NA
+  GRASS[GRASS == 0] <- NA
+  SOIL[SOIL == 0] <- NA
+  
+  
   # Rescale values if HDR file
   if(isHDR){
     
     ## This is done to replicate how ENVI does it, but not saying it's the best way
-    #### If the values are between 0-1, like they should be, this will do nothing to the HDR except scale to 255
-    ### When they aren't 0-1, it creates scales the RGB255 between the min and max
+    #### If the values are between 0-1, like they should be, this will do nothing to the HDR except scale to 255 (assuming max = 1 and min = 0)
+    ### When they aren't 0-1, it creates scales the RGB255 between the min and max (that would be a problem if the min>0)
     ### See MASTER_Classifying Tree Cover.doc's HDR->Tiff section for more explanation 
     
-    tr.min <- min(TREE[!is.na(TREE)])
-    tr.max <- max(TREE[!is.na(TREE)])
+    # Get the whole area that was classified, because those are the min and maxes needed for scaling to 255
+    Laik.tree <- raster(paste0(SMAfolder, tiffname), band = treeband)
+    Laik.grass <- raster(paste0(SMAfolder, tiffname), band = grband)
+    Laik.soil <- raster(paste0(SMAfolder, tiffname), band = soilband)
+    
+    if(is.unconstrained == TRUE){
+      # If it's unconstrained, scale it back to -1 to 2 range
+      # Exclude all else
+      Laik.tree[Laik.tree > 2] <- NA
+      Laik.tree[Laik.tree < -1] <- NA
+      Laik.grass[Laik.grass > 2] <- NA
+      Laik.grass[Laik.grass < -1] <- NA
+      Laik.soil[Laik.soil > 2] <- NA
+      Laik.soil[Laik.soil < -1] <- NA
+      TREE[TREE > 2] <- NA
+      TREE[TREE < -1] <- NA
+      GRASS[GRASS > 2] <- NA
+      GRASS[GRASS < -1] <- NA
+      SOIL[SOIL > 2] <- NA
+      SOIL[SOIL < -1] <- NA
+    }
+    
+    
+    # Scale to 255 by shifting all to positive values and scaling to the max
+    tr.min <- cellStats(Laik.tree, min)
+    tr.max <- cellStats(Laik.tree, max)
     TREE.shift <- TREE - tr.min # brings the min to zero
-    new.max <- max(TREE.shift[!is.na(TREE.shift)])
+    new.max <- tr.max - tr.min # find the new shifted max
     TREE <- (TREE.shift/new.max)*255
     # TREE <- (TREE - tr.min)/(tr.max - tr.min)*255 # This is the same as above, but simpler
     
-    tr.max <- max(GRASS[!is.na(GRASS)])
-    tr.min <- min(GRASS[!is.na(GRASS)])
-    GRASS <- (GRASS - tr.min)/(tr.max - tr.min)*255
+    gr.min <- cellStats(Laik.grass, min)
+    gr.max <- cellStats(Laik.grass, max)
+    GRASS.shift <- GRASS - gr.min # brings the min to zero
+    new.max <- gr.max - gr.min # find the new shifted max
+    GRASS <- (GRASS.shift/new.max)*255
     
-    tr.max <- max(SOIL[!is.na(SOIL)])
-    tr.min <- min(SOIL[!is.na(SOIL)])
-    SOIL <- (SOIL - tr.min)/(tr.max - tr.min)*255
     
-    # Old code scaled values below 0 to 255 and those above to 255, which makes no sense!
+    so.min <- cellStats(Laik.soil, min)
+    so.max <- cellStats(Laik.soil, max)
+    SOIL.shift <- SOIL - so.min # brings the min to zero
+    new.max <- so.max - so.min # find the new shifted max
+    SOIL <- (SOIL.shift/new.max)*255
+    
   }
   
   plot(TREE, axes=F,box = F, main = "Trees SMA")
@@ -581,23 +616,21 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   
   for(t in 1:samplesize){
     
-    # Some cells are now NA because the classification excluded cover chances in some places, so switch to 0 
+    # Some cells are now NA because the classification excluded cover chances
+    # That's okay, but need a value for the major cover determination
+    # So set % cover to zero for NA cells, else just calc the cover
     if(is.na(TREE.c[cellnumbers[t]])){
-      TREE.c[cellnumbers[t]] <- 0
-    }
-    
+      sma.tree <- 0
+    }else{sma.tree <- TREE.c[cellnumbers[t]]/255}
+
     if(is.na(GRASS.c[cellnumbers[t]])){
-      GRASS.c[cellnumbers[t]] <- 0
-    }
-    
+      sma.grass <- 0
+    }else{sma.grass <- GRASS.c[cellnumbers[t]]/255}
+
     if(is.na(SOIL.c[cellnumbers[t]])){
-      SOIL.c[cellnumbers[t]] <- 0
-    }
+      sma.soil <- 0
+    }else{sma.soil <- SOIL.c[cellnumbers[t]]/255}
     
-    # Get percent cover
-    sma.tree <- TREE.c[cellnumbers[t]]/255  
-    sma.grass <- GRASS.c[cellnumbers[t]]/255
-    sma.soil <- SOIL.c[cellnumbers[t]]/255
     
     # Define major cover for SMA
     if(sma.tree > sma.grass & sma.tree > sma.soil){
@@ -607,9 +640,9 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
     } else{SMA.cov <- "Soil"}
     
     # Plug in to df
-    df$SMA.tree[t] <- sma.tree
-    df$SMA.grass[t] <- sma.grass
-    df$SMA.soil[t] <- sma.soil
+    df$SMA.tree[t] <- TREE.c[cellnumbers[t]]/255 # These stay in the original form because want NA cells to stay NA
+    df$SMA.grass[t] <- GRASS.c[cellnumbers[t]]/255 # That is to avoid them being plotted in the 1:1 plot
+    df$SMA.soil[t] <- SOIL.c[cellnumbers[t]]/255
     df$maj.SMA[t] <- SMA.cov 
     # Add the data to master.df
   }
@@ -727,11 +760,18 @@ var2text <- function(variable){
 
 # Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
 plot1to1 <- function(x, y, xlab = "", ylab = "", main = ""){
+  
+  # Get rid of any rows that have an NA in either x or y
+  x <- x[!is.na(y)]
+  y <- y[!is.na(y)] # These have to be in this order so each removes the other's values based on the first one's NA values
+  y <- y[!is.na(x)] # That is, you use the NAs in y to get rid of corresponding values/rows in x, then you get rid of the NA's in y
+  x <- x[!is.na(x)] # Then the opposite is done with x's NAs getting rid of y values, then x getting rid of its own
+  
+  
   # Calculate Stats
   ##   RMSE
   rmse <- sqrt(mean((y - x)^2 , na.rm = TRUE))
   correl <- cor(x, y)
-  covar <- cov(x, y)
   
   if(nchar(xlab) < 1) xlab <- var2text(x)
   if(nchar(ylab) < 1) ylab <- var2text(y)
