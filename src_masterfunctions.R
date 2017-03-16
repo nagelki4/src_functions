@@ -551,6 +551,10 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   GRASS[GRASS == 0] <- NA
   SOIL[SOIL == 0] <- NA
   
+  # Keep the raw values to plug into the df later
+  raw.TREE <- TREE
+  raw.GRASS <- GRASS
+  raw.SOIL <- SOIL
   
   # Rescale values if HDR file
   if(isHDR){
@@ -613,6 +617,9 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   TREE.c <- mask(TREE, groundtruthboundary) # if you try to do this in the clipTIF, it will result in a smaller raster and indexing won't work
   GRASS.c <- mask(GRASS, groundtruthboundary)
   SOIL.c <- mask(SOIL, groundtruthboundary)
+  rawT.c <- mask(raw.TREE, groundtruthboundary)
+  rawG.c <- mask(raw.GRASS, groundtruthboundary)
+  rawS.c <- mask(raw.SOIL, groundtruthboundary)
   
   for(t in 1:samplesize){
     
@@ -644,7 +651,9 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
     df$SMA.grass[t] <- GRASS.c[cellnumbers[t]]/255 # That is to avoid them being plotted in the 1:1 plot
     df$SMA.soil[t] <- SOIL.c[cellnumbers[t]]/255
     df$maj.SMA[t] <- SMA.cov 
-    # Add the data to master.df
+    df$raw.SMA.tree[t] <- rawT.c[cellnumbers[t]]
+    df$raw.SMA.grass[t] <- rawG.c[cellnumbers[t]]
+    df$raw.SMA.soil[t] <- rawS.c[cellnumbers[t]]
   }
   
   r.list <- list(df, TREE, GRASS, SOIL)
@@ -759,7 +768,8 @@ var2text <- function(variable){
 
 
 # Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
-plot1to1 <- function(x, y, xlab = "", ylab = "", main = ""){
+plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), ylim = c(0,100), add_one2one_line = TRUE, 
+                     save.plot = FALSE, save.plot.name = "rplot"){
   
   # Get rid of any rows that have an NA in either x or y
   x <- x[!is.na(y)]
@@ -777,12 +787,24 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = ""){
   if(nchar(ylab) < 1) ylab <- var2text(y)
   if(nchar(main) < 1) main <- paste(xlab, "vs.", ylab)
   
-  # Plot
+  # Plot the scaled 1 to 1
   plot(x*100, y*100, 
        main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2)), 
-       xlab = xlab, ylab = ylab, xlim = c(0,100), ylim = c(0,100))
-  abline(0,1) # Add the 1:1 line
+       xlab = xlab, ylab = ylab, xlim = xlim, ylim = ylim)
+  if(add_one2one_line){
+    abline(0,1) # Add the 1:1 line
+  }
   
+  if(save.plot){
+    png(save.plot.name)
+    plot(x*100, y*100, 
+         main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2)), 
+         xlab = xlab, ylab = ylab, xlim = xlim, ylim = ylim)
+    if(add_one2one_line){
+      abline(0,1) # Add the 1:1 line
+    }
+    dev.off()
+  }
 }
 
 # Create's a transtion matrix from 2 stacks (one old and one new). Stack must be stack(Treecover, Grasscover, Soilcover) in that order
