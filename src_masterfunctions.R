@@ -528,7 +528,7 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
 }
 
 # Add the SMA data to the master.df, and return that with the park level tree, grass, soil layers 
-addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary,
+addSMA <- function(SMAfolder, tiffname, treeband, grband = "", soilband, parkboundary,
                    groundtruthboundary, df, isHDR = FALSE, is.unconstrained = FALSE){
   
   # get some stats
@@ -540,6 +540,7 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband, soilband, parkboundary
   TREE <- clipTIF(path = SMAfolder, tifname = tiffname, bandnum = treeband, clipboundary = parkboundary)
   GRASS <- clipTIF(path = SMAfolder, tifname = tiffname, bandnum = grband, clipboundary = parkboundary)
   SOIL <- clipTIF(path = SMAfolder, tifname = tiffname, bandnum = soilband, clipboundary = parkboundary)
+  
   # 1987
   # TREE.87 <- clipTIF(path = SMA.folder, tifname = SMA.87, bandnum = tr.bandnum.87, clipboundary = mpala.boundary.simple)
   # GRASS.87 <- clipTIF(path = SMA.folder, tifname = SMA.87, bandnum = gr.bandnum.87, clipboundary = mpala.boundary.simple)
@@ -769,7 +770,7 @@ var2text <- function(variable){
 
 # Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
 plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), ylim = c(0,100), add_one2one_line = TRUE, 
-                     save.plot = FALSE, save.plot.name = "rplot"){
+                     save.plot = FALSE, save.plot.name = "rplot", col = "black", add.reg.line = "FALSE"){
   
   # Get rid of any rows that have an NA in either x or y
   x <- x[!is.na(y)]
@@ -782,6 +783,8 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
   ##   RMSE
   rmse <- sqrt(mean((y - x)^2 , na.rm = TRUE))
   correl <- cor(x, y)
+  reg <- lm(y ~ x)
+  
   
   if(nchar(xlab) < 1) xlab <- var2text(x)
   if(nchar(ylab) < 1) ylab <- var2text(y)
@@ -789,19 +792,33 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
   
   # Plot the scaled 1 to 1
   plot(x*100, y*100, 
-       main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2)), 
-       xlab = xlab, ylab = ylab, xlim = xlim, ylim = ylim)
+       main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2),
+                     " Slope = ", round(reg$coefficients[[2]], 2)), xlab = xlab, ylab = ylab, 
+       xlim = xlim, ylim = ylim, col = col)
   if(add_one2one_line){
     abline(0,1) # Add the 1:1 line
+  }
+  if(add.reg.line){
+    xnew <- x*100 # won't do regression on x*100 by itself
+    ynew <- y*100
+    modl <- lm(ynew ~ xnew) # calc regression
+    abline(mdl, lty = 2)
   }
   
   if(save.plot){
     png(save.plot.name)
     plot(x*100, y*100, 
-         main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2)), 
-         xlab = xlab, ylab = ylab, xlim = xlim, ylim = ylim)
+         main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2),
+                       " Slope = ", round(reg$coefficients[[2]], 2)), xlab = xlab, ylab = ylab, 
+         xlim = xlim, ylim = ylim, col = col)
     if(add_one2one_line){
       abline(0,1) # Add the 1:1 line
+    }
+    if(add.reg.line){
+      xnew <- x*100 # won't do regression on x*100 by itself
+      ynew <- y*100
+      modl <- lm(ynew ~ xnew) # calc regression
+      abline(mdl)
     }
     dev.off()
   }
