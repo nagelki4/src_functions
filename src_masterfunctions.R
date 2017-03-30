@@ -770,7 +770,7 @@ var2text <- function(variable){
 
 # Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
 plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), ylim = c(0,100), add_one2one_line = TRUE, 
-                     save.plot = FALSE, save.plot.name = "rplot", col = "black", add.reg.line = "FALSE"){
+                     save.plot = FALSE, save.plot.name = "rplot", col = "black", add.reg.line = "FALSE", hdr.table, hdr.count){
   
   # Get rid of any rows that have an NA in either x or y
   x <- x[!is.na(y)]
@@ -783,16 +783,25 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
   ##   RMSE
   rmse <- sqrt(mean((y - x)^2 , na.rm = TRUE))
   correl <- cor(x, y)
-  reg <- lm(y ~ x)
+  reg <- lm(y ~ x) # this lm is just for reporting in the plot title
+  
+  # Plug values into table
+  if(hdr.count > 0){
+    
+    hdr.table[]
+    
+  }
   
   
+  
+  # Do some controlling
   if(nchar(xlab) < 1) xlab <- var2text(x)
   if(nchar(ylab) < 1) ylab <- var2text(y)
   if(nchar(main) < 1) main <- paste(xlab, "vs.", ylab)
   
   # Plot the scaled 1 to 1
   plot(x*100, y*100, 
-       main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2),
+       main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," R^2 = ", round(summary(reg)[[9]], 2) ,
                      " Slope = ", round(reg$coefficients[[2]], 2)), xlab = xlab, ylab = ylab, 
        xlim = xlim, ylim = ylim, col = col)
   if(add_one2one_line){
@@ -802,13 +811,17 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
     xnew <- x*100 # won't do regression on x*100 by itself
     ynew <- y*100
     modl <- lm(ynew ~ xnew) # calc regression
-    abline(mdl, lty = 2)
+    abline(modl, lty = 2)
+    # Add another line, shifted up to 1:1 line
+    mdl2 <- modl
+    mdl2$coefficients[[1]] <- 0
+    abline(mdl2, lty = 2, col = "red")
   }
   
   if(save.plot){
     png(save.plot.name)
     plot(x*100, y*100, 
-         main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," Cor = ", round(correl, 2),
+         main = paste0(main, " \nRMSE = ", round(rmse, 2)*100, "% "," R^2 = ", round(summary(reg)[[9]], 2) ,
                        " Slope = ", round(reg$coefficients[[2]], 2)), xlab = xlab, ylab = ylab, 
          xlim = xlim, ylim = ylim, col = col)
     if(add_one2one_line){
@@ -819,6 +832,10 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
       ynew <- y*100
       modl <- lm(ynew ~ xnew) # calc regression
       abline(mdl)
+      # Add another line, shifted up to 1:1 line
+      mdl2 <- modl
+      mdl2$coefficients[[1]] <- 0
+      abline(mdl2, lty = 2, col = "red")
     }
     dev.off()
   }
