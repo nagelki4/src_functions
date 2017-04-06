@@ -770,7 +770,8 @@ var2text <- function(variable){
 
 # Plot 1 to 1 plot with a 1:1 line added and RMSE and Correlation in title
 plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), ylim = c(0,100), add_one2one_line = TRUE, 
-                     save.plot = FALSE, save.plot.name = "rplot", col = "black", add.reg.line = "FALSE", hdr.table, hdr.count){
+                     save.plot = FALSE, save.plot.name = "rplot", col = "black", add.reg.line = "FALSE", hdr.table = "", hdr.count = "", 
+                     hdr.namefor.table = ""){
   
   # Get rid of any rows that have an NA in either x or y
   x <- x[!is.na(y)]
@@ -783,12 +784,17 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
   ##   RMSE
   rmse <- sqrt(mean((y - x)^2 , na.rm = TRUE))
   correl <- cor(x, y)
-  reg <- lm(y ~ x) # this lm is just for reporting in the plot title
+  reg <- lm(y ~ x) # this lm is just for reporting in the plot title and table
   
   # Plug values into table
   if(hdr.count > 0){
     
-    hdr.table[]
+    hdr.table$hdr.name[hdr.count] <- hdr.namefor.table 
+    hdr.table$RMSE[hdr.count] <- round(rmse, 2)
+    hdr.table$adj.r.sq[hdr.count] <- round(summary(reg)[[9]], 2)
+    hdr.table$slope[hdr.count] <- round(reg$coefficients[[2]], 2)
+    hdr.table$'one-slope'[hdr.count] <- 1 - round(reg$coefficients[[2]], 2)
+    hdr.table$'y-int'[hdr.count] <- round(reg$coefficients[[1]], 2)
     
   }
   
@@ -831,7 +837,7 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
       xnew <- x*100 # won't do regression on x*100 by itself
       ynew <- y*100
       modl <- lm(ynew ~ xnew) # calc regression
-      abline(mdl)
+      abline(modl, lty = 2)
       # Add another line, shifted up to 1:1 line
       mdl2 <- modl
       mdl2$coefficients[[1]] <- 0
@@ -839,7 +845,11 @@ plot1to1 <- function(x, y, xlab = "", ylab = "", main = "", xlim = c(0,100), yli
     }
     dev.off()
   }
+  if(hdr.count > 0){
+    return(hdr.table)
+  }
 }
+
 
 # Create's a transtion matrix from 2 stacks (one old and one new). Stack must be stack(Treecover, Grasscover, Soilcover) in that order
 create.trans.mtx <- function(recent.TGS.cover.stack, yearofrecent = "", old.cover.TGS.cover.stack, yearofold = "", 
@@ -986,10 +996,60 @@ create.trans.mtx <- function(recent.TGS.cover.stack, yearofrecent = "", old.cove
 }
 
 
+# Output YearMonthDay
+YMD <- function(){
+  ymd <- Sys.time()
+  ym <- substr(ymd, 1, 10)
+  y <- gsub("-", "", ym)
+  return(y)
+}
 
-
-
-
+# Move Landsat tar file and unzip in a new location. Keeps the original tar file in original location
+landsatUntar <- function(landsat.folder, unzip.folder.name){
+  # This is a simple function to just create an unzipped folder and move the unzipped files into it
+  
+  # Load packages
+  library(date)
+  
+  # Set working directory
+  setwd(landsat.folder)
+  
+  
+  # Organize files into folders named using the dates of the files (YYYYMMDD)
+  # After moving files into folder, unzip them
+  
+  
+  # Create list of files
+  fileList <- list.files(landsat.folder, pattern = ".gz")
+  numFiles <- length(fileList)
+  
+  
+  for(i in 1:numFiles){
+    # Use the date values to create Landsat_'year' folders and insert into those 
+    # other folders with names in YYYYMMDD format within which to unzip the files
+    # Print an update
+    print(paste(i, "of", numFiles))
+    
+    # Create folder and file names
+    # LandsatFolderName <- paste(j, "/Landsat_", year_num, sep = "")
+    # PathRowFolderName <- paste(LandsatFolderName, "/Path", path_num, "_Row", row_num, sep = "")
+    
+    newFileName <- paste0(unzip.folder.name, "/temp")
+    
+    
+    if (dir.exists(unzip.folder.name) == FALSE) { # if folder doesn't exist, create it and move file
+      dir.create(unzip.folder.name)
+      # Move file
+      file.copy(fileList[i], newFileName) # or do file.rename to cut and paste / moving before unzip might help speed
+      untar(newFileName, exdir = unzip.folder.name)
+    } else { # else just move the file to the appropriate folder
+      file.copy(fileList[i], newFileName)
+      untar(newFileName, exdir = unzip.folder.name)
+    }
+    # Delete the tar.gz file after unzipping (saves space)
+    file.remove(newFileName)
+  }
+}
 
 
 
