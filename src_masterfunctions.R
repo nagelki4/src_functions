@@ -627,30 +627,36 @@ addSMA <- function(SMAfolder, tiffname, treeband, grband = "", soilband, parkbou
     # Some cells are now NA because the classification excluded cover chances
     # That's okay, but need a value for the major cover determination
     # So set % cover to zero for NA cells, else just calc the cover
-    if(is.na(TREE.c[cellnumbers[t]])){
-      sma.tree <- 0
-    }else{sma.tree <- TREE.c[cellnumbers[t]]/255}
-
-    if(is.na(GRASS.c[cellnumbers[t]])){
-      sma.grass <- 0
-    }else{sma.grass <- GRASS.c[cellnumbers[t]]/255}
-
-    if(is.na(SOIL.c[cellnumbers[t]])){
-      sma.soil <- 0
-    }else{sma.soil <- SOIL.c[cellnumbers[t]]/255}
+    # if(is.na(TREE.c[cellnumbers[t]])){
+    #   sma.tree <- 0
+    # }else{sma.tree <- TREE.c[cellnumbers[t]]/255}
+    # 
+    # if(is.na(GRASS.c[cellnumbers[t]])){
+    #   sma.grass <- 0
+    # }else{sma.grass <- GRASS.c[cellnumbers[t]]/255}
+    # 
+    # if(is.na(SOIL.c[cellnumbers[t]])){
+    #   sma.soil <- 0
+    # }else{sma.soil <- SOIL.c[cellnumbers[t]]/255}
+    # 
+    # 
     
     
-    # Define major cover for SMA
-    if(sma.tree > sma.grass & sma.tree > sma.soil){
+    if(TREE.c[cellnumbers[t]] >= 0.5){
       SMA.cov <- "Trees"
-    } else if(sma.grass > sma.tree & sma.grass > sma.soil){
-      SMA.cov <- "Grass"
-    } else{SMA.cov <- "Soil"}
+    }else{SMA.cov <- "Soil"}
     
+    # # Define major cover for SMA
+    # if(sma.tree > sma.grass & sma.tree > sma.soil){
+    #   SMA.cov <- "Trees"
+    # } else if(sma.grass > sma.tree & sma.grass > sma.soil){
+    #   SMA.cov <- "Grass"
+    # } else{SMA.cov <- "Soil"}
+    # 
     # Plug in to df
-    df$SMA.tree[t] <- TREE.c[cellnumbers[t]]/255 # These stay in the original form because want NA cells to stay NA
-    df$SMA.grass[t] <- GRASS.c[cellnumbers[t]]/255 # That is to avoid them being plotted in the 1:1 plot
-    df$SMA.soil[t] <- SOIL.c[cellnumbers[t]]/255
+    df$SMA.tree[t] <- TREE.c[cellnumbers[t]]#/255 # These stay in the original form because want NA cells to stay NA
+    df$SMA.grass[t] <- GRASS.c[cellnumbers[t]]#/255 # That is to avoid them being plotted in the 1:1 plot
+    df$SMA.soil[t] <- SOIL.c[cellnumbers[t]]#/255
     df$maj.SMA[t] <- SMA.cov 
     df$raw.SMA.tree[t] <- rawT.c[cellnumbers[t]]
     df$raw.SMA.grass[t] <- rawG.c[cellnumbers[t]]
@@ -1004,55 +1010,362 @@ YMD <- function(){
   return(y)
 }
 
-# Move Landsat tar file and unzip in a new location. Keeps the original tar file in original location
-landsatUntar <- function(landsat.folder, unzip.folder.name){
-  # This is a simple function to just create an unzipped folder and move the unzipped files into it
+# Move Landsat tar file and unzip in a new location. Keeps the original tar file in the new location
+landsatUntar <- function(landsat.folder = "", landsat.file, dest.folder.name){
+  # This is a simple function to unzip all the files in a folder (landsat.folder) in a new location
+  # It can also take a single landsat file (landsat.file) and move it and unzip it
   
   # Load packages
   library(date)
   
-  # Set working directory
-  setwd(landsat.folder)
-  
-  
-  # Organize files into folders named using the dates of the files (YYYYMMDD)
-  # After moving files into folder, unzip them
-  
-  
-  # Create list of files
-  fileList <- list.files(landsat.folder, pattern = ".gz")
-  numFiles <- length(fileList)
-  
-  
-  for(i in 1:numFiles){
-    # Use the date values to create Landsat_'year' folders and insert into those 
-    # other folders with names in YYYYMMDD format within which to unzip the files
-    # Print an update
-    print(paste(i, "of", numFiles))
+  # if a folder name is provided, do the mass unzipping to the dest.folder
+  if(nchar(landsat.folder) > 0){
     
-    # Create folder and file names
-    # LandsatFolderName <- paste(j, "/Landsat_", year_num, sep = "")
-    # PathRowFolderName <- paste(LandsatFolderName, "/Path", path_num, "_Row", row_num, sep = "")
-    
-    newFileName <- paste0(unzip.folder.name, "/temp")
+    # Create list of files
+    fileList <- list.files(landsat.folder, pattern = ".gz")
+    numFiles <- length(fileList)
     
     
-    if (dir.exists(unzip.folder.name) == FALSE) { # if folder doesn't exist, create it and move file
-      dir.create(unzip.folder.name)
+    for(i in 1:numFiles){
+      # Use the date values to create Landsat_'year' folders and insert into those 
+      # other folders with names in YYYYMMDD format within which to unzip the files
+      # Print an update
+      print(paste(i, "of", numFiles))
+      
+      # Create folder and file names
+      # LandsatFolderName <- paste(j, "/Landsat_", year_num, sep = "")
+      # PathRowFolderName <- paste(LandsatFolderName, "/Path", path_num, "_Row", row_num, sep = "")
+      
+      
+      if (dir.exists(dest.folder.name) == FALSE) { # if folder doesn't exist, create it and move file
+        dir.create(dest.folder.name)
+        # Move file
+        file.copy(fileList[i], dest.folder.name) # or do file.rename to cut and paste / moving before unzip might help speed
+        untar(fileList[i], exdir = dest.folder.name)
+      } else { # else just move the file to the appropriate folder
+        file.copy(fileList[i], dest.folder.name)
+        untar(fileList[i], exdir = dest.folder.name)
+      }
+      # Delete the tar.gz file after unzipping (saves space) (if untar didn't complete, then the file stays so can rerun code without missing files)
+      file.remove(fileList[i])
+    }
+    
+  }else{# else unzip the single file name to the dest.folder
+    
+    if (dir.exists(dest.folder.name) == FALSE) { # if folder doesn't exist, create it and move file
+      dir.create(dest.folder.name)
       # Move file
-      file.copy(fileList[i], newFileName) # or do file.rename to cut and paste / moving before unzip might help speed
-      untar(newFileName, exdir = unzip.folder.name)
+      file.copy(landsat.file, dest.folder.name) # or do file.rename to cut and paste / moving before unzip might help speed
+      untar(landsat.file, exdir = dest.folder.name)
     } else { # else just move the file to the appropriate folder
-      file.copy(fileList[i], newFileName)
-      untar(newFileName, exdir = unzip.folder.name)
+      file.copy(landsat.file, dest.folder.name)
+      untar(landsat.file, exdir = dest.folder.name)
     }
     # Delete the tar.gz file after unzipping (saves space)
-    file.remove(newFileName)
+    file.remove(landsat.file)
   }
 }
 
 
+tick <- function(){
+  return(Sys.time())
+}
 
-# image_prefix <- "LC81680602014034LGN00"
-# image_folder <- "C:/Users/nagelki-4/Desktop/nagelki4/Grad School/Projects/EleTree Analysis/SMA/Landsat/Mpala/LC81680602014034-SC20160914165712/Original"
+tock <- function(start.time){
+  return(Sys.time() - start.time)
+}
+
+# Mosaics a list of Landsat bands, then stacks and clips to a boundary. 
+# Can operate on a single file, too. It will then just stack it and clip it.
+# The boundary needs to be a loaded shapefile 
+# Will create a temp folder for the intermediate files
+mosaic.stack.clip.mask.Landsat <- function(landsat.file.names, clip.boundary){
+  
+  # Required library
+  library(raster)
+  
+  # Set the variable that deletes the intermediates to FALSE in case the next one up is just one image by itself
+  delete.intermediates <- FALSE
+  
+  #########  Folder and file handling setup  ###################################################################
+  # Create a temp folder in the working directory, if it doesn't already exist
+  if(!file.exists("./temp")){
+    dir.create("./temp") # all the intermeidate files will go here. For now, let's not delete them
+  }
+  
+  
+  #########  START  #######################################################################
+  
+  # What are the unique names?
+  landsat.names <- substr(landsat.file.names, 1, 21)
+  ls.unique <- unique(landsat.names)
+  
+  # Stitch if needed
+  if(length(ls.unique) > 1){
+    
+    delete.intermediates <- FALSE # making this false for now. Later, when code is working well, could set it to TRUE
+    
+    # Merge (stitch) the seven bands and the cloudmask
+    # Used merge instead of mosaic because mosaic blends the overlapping pixels. That would be and issue
+    # in situations where there is cloud cover, especially for the cloud mask. Could have used mosaic
+    # for the bands and merge for the cloud mask, but then if a band had clouds and was lower in the 
+    # cloud mask merge, that mask wouldn't show up and the overlapping bands would have values between 
+    # cloud and land surface values. So just merged them all so that the mask would always match what 
+    # was showing up in the bands
+    
+    # For each band, rasterize and merge the images
+    band.list <- c("band1", "band2", "band3", "band4", "band5", "band6", "band7", "pixel_qa")
+    new.stitched.file.list <- ""
+    # t <- 1
+    for(t in 1:length(band.list)){
+      # Get the names of the rasters with those bands
+      same.path.n.bands <- grep(band.list[t], landsat.file.names, value = TRUE)
+      
+      # Create a text string for the different path and rows (will be part of the final name)
+      pathrow.string <- ""
+      
+      ############  First, create the stitched file name and check to see if it already exists  #########################################
+      for(n in 1:length(same.path.n.bands)){
+        # update path row string
+        pathrow.string <- paste0(pathrow.string, "_", substr(same.path.n.bands[n], 11, 16))
+      }
+      
+      # This will be the name of the stitched file, so check if it already exists
+      stitched.file.name <- paste0("./temp/", substr(same.path.n.bands[n], 1, 9), pathrow.string, substr(same.path.n.bands[n], 17, nchar(same.path.n.bands[n])))
+      
+      # If file exists, first add it to the name of tifs for the next section of code, then go to next in loop
+      if(file.exists(stitched.file.name)){
+        # Add tiff name to list
+        new.stitched.file.list <- c(new.stitched.file.list, stitched.file.name)
+        next
+      }
+      
+      ########  For each raster, read it in and merge if it isn't the first raster  ###############################################
+      for(n in 1:length(same.path.n.bands)){
+        
+        # update path row string
+        pathrow.string <- paste0(pathrow.string, "_", substr(same.path.n.bands[n], 11, 16))
+        
+        if(n == 1){
+          merge.raster <- raster(same.path.n.bands[n])
+        }else{
+          ras <- raster(same.path.n.bands[n])
+          merge.raster <- merge(merge.raster, ras)
+        }
+      }
+      
+      # Write the stitched bands
+      writeRaster(merge.raster, filename = stitched.file.name)
+      
+      # Add tiff name to list
+      new.stitched.file.list <- c(new.stitched.file.list, stitched.file.name)
+    }
+    
+    # Take off the first value in the list bc it will be ""
+    landsat.file.names <- new.stitched.file.list[-1]
+    
+  }
+  
+  
+  # For each Landsat image (there will only be one), stack it, clip it, make sure values are 0-10000 and apply the cloud mask. Then save as ENVI hdr
+  
+  # Get the 7 bands of the first image
+  seven.band <- grep("band", landsat.file.names, value = TRUE)
+  
+  # Get the landsat prefix
+  ls.prefix <- substr(seven.band[1], 1, nchar(seven.band[1]) - 13)
+  
+  # Get the cloud mask
+  cloud.mask <- raster(paste0(ls.prefix, "_pixel_qa.tif"))
+  
+  # Set boundary to same crs as the landsat data
+  site.boundary <- spTransform(clip.boundary, crs(cloud.mask)) 
+  
+  
+  # Read in and stack the seven bands
+  for(t in 1:length(seven.band)){
+    ras <- raster(seven.band[t])
+    if(t == 1){
+      seven.stack <- ras
+    }else{
+      seven.stack <- stack(seven.stack, ras)
+    }
+  }
+  
+  # Crop to boundary
+  clip.stack <- clipTIF(tifname = seven.stack, clipboundary = site.boundary)
+  clip.mask <- clipTIF(tifname = cloud.mask, clipboundary = site.boundary)
+  
+  
+  # For every band, set anything above 10000 or below 0 to NA
+  for(t in 1:dim(clip.stack)[3]){
+    # values below zero or >10000 are no good
+    clip.stack[[t]][clip.stack[[t]] > 10000 | clip.stack[[t]] < 0] <- NA
+    
+  }
+  
+  
+  # new qa band for clouds. description here: https://landsat.usgs.gov/collectionqualityband
+  # band is called pixel_qa and 66 = clear (no water or clouds or snow)
+  
+  # Apply the cloud mask
+  clip.mask[clip.mask != 66] <- NA
+  mask <- clip.mask - 65 # values of 66 mean clear skies, so bring that to 1 so that when multiplied, those places stay the same
+  # Apply mask to each layer of stack
+  for(n in 1:dim(clip.stack)[3]){
+    clip.stack[[n]] <- (clip.stack[[n]] * mask)   
+  }
+  
+  
+  # If images were stitched, this will delete the intermediates
+  if(delete.intermediates == TRUE){
+    file.remove(landsat.file.names)
+  }
+  
+  return(clip.stack)
+  
+}
+
+
+# This on puts them in a brick, instead of a stack, then clips, masks, sets values, and merges last
+# No temp folder created
+mosaic.stack.clip.mask.Landsat2 <- function(landsat.file.names, clip.boundary){
+  
+  # Required library
+  library(raster)
+  
+  # Set the variable that deletes the intermediates to FALSE in case the next one up is just one image by itself
+  delete.intermediates <- FALSE
+  
+  #########  Folder and file handling setup  ###################################################################
+  # Create a temp folder in the working directory, if it doesn't already exist
+  if(!file.exists("./temp")){
+    dir.create("./temp") # all the intermeidate files will go here. For now, let's not delete them
+  }
+  
+  
+  #########  START  #######################################################################
+  
+  # What are the unique names?
+  landsat.names <- substr(landsat.file.names, 1, 21)
+  ls.unique <- unique(landsat.names)
+  
+  
+  ### Go through each landsat image and merge at the end
+  x <- 1
+  for(x in 1:length(ls.unique)){
+    
+    ###############  BRICK  ##########################################################################################
+    # For each Landsat image (there will only be one), brick it, clip it, make sure values are 0-10000 and apply the cloud mask. Then save as ENVI hdr
+    
+    # Get the 7 bands of the first image
+    s.band <- grep(ls.unique[x], landsat.file.names, value = TRUE)
+    seven.band <- grep("band", s.band, value = TRUE)
+    
+    
+    # Read in and stack the seven bands
+    for(t in 1:length(seven.band)){
+      ras <- raster(seven.band[t])
+      if(t == 1){
+        s.stack <- ras
+      }else{
+        s.stack <- stack(s.stack, ras)
+      }
+    }
+    
+    # Conver to a brick
+    s.stack <-  brick(s.stack)
+    
+    ###########  Cloud Mask and Reproject Boundary  ############################################################################# 
+    
+    # Get the cloud mask
+    cloud.mask <- raster(grep("_pixel_qa.tif", s.band, value = TRUE))
+    
+    # Set boundary to same crs as the landsat data
+    site.boundary <- spTransform(clip.boundary, crs(cloud.mask)) 
+    
+    
+    ############  CLIP  ##########################################################################################
+    # Crop to boundary
+    s.stack <- clipTIF(tifname = s.stack, clipboundary = site.boundary)
+    clip.mask <- clipTIF(tifname = cloud.mask, clipboundary = site.boundary)
+    
+    
+    ###########  MASK  ################################################################################################
+    clip.mask[clip.mask != 66] <- NA
+    mask <- clip.mask - 65 # values of 66 mean clear skies, so bring that to 1 so that when multiplied, those places stay the same
+    # Apply mask to the brick
+    s.stack <- s.stack * mask
+    
+    
+    # rs2 <- calc(clip.stack, fun=function(x){x * mask})
+    # 
+    
+    #########  CHANGE HIGH and LOW VALUES to NA  ################################################################################
+    # For every band, set anything above 10000 or below 0 to NA
+    for(t in 1:dim(s.stack)[3]){
+      # values below zero or >10000 are no good
+      s.stack[[t]][s.stack[[t]] > 10000 | s.stack[[t]] < 0] <- NA
+    }
+    
+    
+    
+    
+    ##########  MERGE  ####################################################################################################
+    # Stitch if needed, if not, end function
+    
+    if(length(ls.unique) == 1){
+      print("Single image (no merging).")
+      return(s.stack) 
+      break
+    }
+    
+    
+    if(length(ls.unique) > 1){
+      
+      if(x == 1){
+        first.brick <- s.stack
+        brick.list <- list(first.brick)
+      }else if(x == 2){
+        second.brick <- s.stack
+        brick.list <- list(first.brick, second.brick)
+      }else if(x == 3){
+        third.brick <- s.stack
+        brick.list <- list(first.brick, second.brick, third.brick)
+      }else if(x == 4){
+        fourth.brick <- s.stack
+        brick.list <- list(first.brick, second.brick, third.brick, fourth.brick)
+      }else if(x == 5){
+        fifth.brick <- s.stack
+        brick.list <- list(first.brick, second.brick, third.brick, fourth.brick, fifth.brick)
+      }
+    }
+    # if the merge went here, then it would merge after each iteration of ls.unique. So if there were 3 images, it would merge twice instead of once
+  }
+  
+  # Just in case it doesn't break out of the function above with ls.unique == 1, this is written as an if statement
+  if(length(ls.unique) > 1){
+    merge.start <- tick()
+    s.stack <- do.call(merge, brick.list) 
+    print("Merge time:")
+    print(tock(merge.start))
+    
+    return(s.stack)
+  }
+}
+
+
+# From a list of years, this finds what year is in the name of something
+findYear <- function(possible.years, files.to.search){
+  # Start a running list
+  temp <- c()
+  for(i in files.to.search){
+    for(x in possible.years){
+      if(grepl(x, i)){
+        temp <- c(temp, x)
+      }
+    }
+  }
+  return(temp)
+}      
 
