@@ -41,8 +41,8 @@ png.read.plot <- function(png.name){
   x <- dim(image)[2]
   y <- dim(image)[1]
   
-  #   plot(0:max.dim, type='n', axes = FALSE)
-  #   rasterImage(image, 0,0,x,y)
+  plot(0:max.dim, type='n', axes = FALSE)
+  rasterImage(image, 0,0,x,y)
   
   return(image)
 }
@@ -360,10 +360,41 @@ TGSWcover <- function(redband, greenband, blueband, save.class.pixel = FALSE, cl
   return(TGSWvec)
 }
 
+# Crops to 30 meters (google image). The function below (CreateCoverTable) does this itself, but could maybe incorporate
+#  For use in download-create-record_GROUNDTRUTH.R
+crop.google <- function(image.name, pixel.res = 30){
+  require(png)
+  # Now bring in the png that was just created
+  image <- readPNG(auto.images[1])
+  
+  # Pull out the red green and blue bands
+  red <- raster(image[,,1])
+  green <- raster(image[,,2])
+  blue <- raster(image[,,3])
+  
+  # Calculate how much to take off each end. The map is ~ 190x190 m
+  image.indent <- (190 - pixel.res)/2
+  # Crop the rasters
+  one.side <- image.indent/190
+  # Create the extent of the 30x30 pixel (the dimension can be changed in the variable section)
+  cr.ext <- extent(c(one.side,1-one.side,one.side,1-one.side))
+  
+  # Crop
+  red.c <- crop(red, cr.ext)
+  green.c <- crop(green, cr.ext)
+  blue.c <- crop(blue, cr.ext)
+  
+  # Stack and create the RGB image
+  col.stack <- stack(red.c, green.c, blue.c)
+  
+  return(col.stack)
+}
 
 # A wrapper for TGScover to go through all images and master.df and nine.pix tables
-CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pixel.rgb = FALSE,
+CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, Google.image.dim.final = 30, save.pixel.rgb = FALSE,
                              ninepixCSVname = "./nine_pix_df.csv", masterdfname = "./default_master", plot.9by9 = FALSE){
+  
+  require(png)
   
   ##########  First, make the table that values will be plugged into ###############################
   mx <- matrix(0, nrow = samplesize, ncol = 12)
@@ -407,7 +438,7 @@ CreateCoverTable <- function(samplesize, googleimagefolder, cellnumbers, save.pi
     # Create the image name for that pixel
     image.name <- paste0("./", googleimagefolder, "/pixel_", cellnumbers[t], ".png")
     # Bring in the png
-    image <- png.read.plot(image.name)
+    image <- readPNG(image.name)
     # Pull out the red green and blue bands
     red <- raster(image[,,1])
     green <- raster(image[,,2])
