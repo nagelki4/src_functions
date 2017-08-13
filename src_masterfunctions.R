@@ -48,7 +48,7 @@ png.read.plot <- function(png.name){
 }
 
 
-# Calc MSAVI2 from a folder and Landsat file specication
+# Calc MSAVI2 from a folder and Landsat file specification
 MSAVI2_Landsat_calc <- function(path, prefix){ # should allow a shapefile in this to clip to first
   
   # Identify mask and band file paths (we just want 4 and 5)
@@ -84,7 +84,7 @@ MSAVI2_Landsat_calc <- function(path, prefix){ # should allow a shapefile in thi
 }
 
 
-# Calc NDVI from a folder and Landsat file specication
+# Calc NDVI from a folder and Landsat file specification
 NDVI_Landsat_calc <- function(path, prefix){
   
   # Identify mask and band file paths (we just want 4 and 5)
@@ -365,7 +365,7 @@ TGSWcover <- function(redband, greenband, blueband, save.class.pixel = FALSE, cl
 crop.google <- function(image.name, pixel.res = 30){
   require(png)
   # Now bring in the png that was just created
-  image <- readPNG(auto.images[1])
+  image <- readPNG(image.name)
   
   # Pull out the red green and blue bands
   red <- raster(image[,,1])
